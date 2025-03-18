@@ -3,41 +3,51 @@ pipeline {
     
     parameters {
         string(name: 'ECR_REPO_NAME', defaultValue: 'amazon-prime', description: 'Enter repository name')
-        string(name: 'AWS_ACCOUNT_ID', defaultValue: '123456789012', description: 'Enter AWS Account ID') // Added missing quote
+        string(name: 'AWS_ACCOUNT_ID', defaultValue: '235494794958', description: 'Enter AWS Account ID') // Added missing quote
     }
     
     tools {
         jdk 'JDK'
-        nodejs 'NodeJS'
+        nodejs 'nodejs18'
     }
     
     environment {
-        SCANNER_HOME = tool 'SonarQube Scanner'
+        SCANNER_HOME = tool 'SonarQube Scanner' 
     }
     
     stages {
-        stage('1. Git Checkout') {
+       stage('1. Git Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/pandacloud1/DevopsProject2.git'
+                git branch: 'main', url: 'https://github.com/ReenaSo16/DevOps-CICD-Amazon-Prime.git'
             }
         }
-        
+
         stage('2. SonarQube Analysis') {
             steps {
-                withSonarQubeEnv ('sonar-server') {
-                    sh """
-                    $SCANNER_HOME/bin/sonar-scanner \
-                    -Dsonar.projectName=amazon-prime \
-                    -Dsonar.projectKey=amazon-prime
-                    """
-                }
+                withSonarQubeEnv('sonar-token') {
+                    withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_LOGIN')]) {
+                        sh '''
+                        $SCANNER_HOME/bin/sonar-scanner \
+                        -Dsonar.projectName=amazon-prime \
+                        -Dsonar.projectKey=amazon-prime \
+                        -Dsonar.host.url=http://13.201.30.176:9000 \
+                        -Dsonar.login=$SONAR_LOGIN
+                        '''
+                    }
+               }
             }
         }
         
-        stage('3. Quality Gate') {
+         stage('3. Quality Gate') {
             steps {
-                waitForQualityGate abortPipeline: false, 
-                credentialsId: 'sonar-token'
+                script {
+                    def qualityGate = waitForQualityGate()
+                    if (qualityGate.status != 'OK') {
+                        error "❌ Quality Gate failed: ${qualityGate.status}"
+                    } else {
+                        echo "✅ Quality Gate passed!"
+                    }
+                }
             }
         }
         
@@ -66,8 +76,8 @@ pipeline {
                     sh """
                     aws configure set aws_access_key_id $AWS_ACCESS_KEY
                     aws configure set aws_secret_access_key $AWS_SECRET_KEY
-                    aws ecr describe-repositories --repository-names ${params.ECR_REPO_NAME} --region us-east-1 || \
-                    aws ecr create-repository --repository-name ${params.ECR_REPO_NAME} --region us-east-1
+                    aws ecr describe-repositories --repository-names ${params.ECR_REPO_NAME} --region ap-south-1 || \
+                    aws ecr create-repository --repository-name ${params.ECR_REPO_NAME} --region ap-south-1
                     """
                 }
             }
@@ -78,9 +88,9 @@ pipeline {
                 withCredentials([string(credentialsId: 'access-key', variable: 'AWS_ACCESS_KEY'), 
                                  string(credentialsId: 'secret-key', variable: 'AWS_SECRET_KEY')]) {
                     sh """
-                    aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${params.AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com
-                    docker tag ${params.ECR_REPO_NAME} ${params.AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/${params.ECR_REPO_NAME}:${BUILD_NUMBER}
-                    docker tag ${params.ECR_REPO_NAME} ${params.AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/${params.ECR_REPO_NAME}:latest
+                    aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin ${params.AWS_ACCOUNT_ID}.dkr.ecr.ap-south-1.amazonaws.com
+                    docker tag ${params.ECR_REPO_NAME} ${params.AWS_ACCOUNT_ID}.dkr.ecr.ap-south-1.amazonaws.com/${params.ECR_REPO_NAME}:${BUILD_NUMBER}
+                    docker tag ${params.ECR_REPO_NAME} ${params.AWS_ACCOUNT_ID}.dkr.ecr.ap-south-1.amazonaws.com/${params.ECR_REPO_NAME}:latest
                     """
                 }
             }
@@ -91,8 +101,8 @@ pipeline {
                 withCredentials([string(credentialsId: 'access-key', variable: 'AWS_ACCESS_KEY'), 
                                  string(credentialsId: 'secret-key', variable: 'AWS_SECRET_KEY')]) {
                     sh """
-                    docker push ${params.AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/${params.ECR_REPO_NAME}:${BUILD_NUMBER}
-                    docker push ${params.AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/${params.ECR_REPO_NAME}:latest
+                    docker push ${params.AWS_ACCOUNT_ID}.dkr.ecr.ap-south-1.amazonaws.com/${params.ECR_REPO_NAME}:${BUILD_NUMBER}
+                    docker push ${params.AWS_ACCOUNT_ID}.dkr.ecr.ap-south-1.amazonaws.com/${params.ECR_REPO_NAME}:latest
                     """
                 }
             }
@@ -101,8 +111,8 @@ pipeline {
         stage('10. Cleanup Images') {
             steps {
                 sh """
-                docker rmi ${params.AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/${params.ECR_REPO_NAME}:${BUILD_NUMBER}
-                docker rmi ${params.AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/${params.ECR_REPO_NAME}:latest
+                docker rmi ${params.AWS_ACCOUNT_ID}.dkr.ecr.ap-south-1.amazonaws.com/${params.ECR_REPO_NAME}:${BUILD_NUMBER}
+                docker rmi ${params.AWS_ACCOUNT_ID}.dkr.ecr.ap-south-1.amazonaws.com/${params.ECR_REPO_NAME}:latest
 		docker images
                 """
             }
